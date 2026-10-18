@@ -11,7 +11,10 @@ class ResearchAgent:
     MAX_ITERATIONS = 6
 
     def __init__(self):
-        self.client   = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise EnvironmentError("GROQ_API_KEY is not configured in environment or .env file.")
+        self.client   = Groq(api_key=api_key)
         self.executor = ToolExecutor()
         self.history  = []
         self.system = """You are an expert research assistant with access to
@@ -61,8 +64,13 @@ Think step by step, call tools to gather information, then give a clear answer."
                 # Execute each tool and collect results
                 for tc in msg.tool_calls:
                     tool_name = tc.function.name
-                    tool_args = json.loads(tc.function.arguments)
-                    result    = self.executor.run(tool_name, tool_args)
+                    try:
+                        tool_args = json.loads(tc.function.arguments or "{}")
+                    except json.JSONDecodeError as err:
+                        tool_args = {}
+                        result = f"Error: Malformed JSON arguments for tool '{tool_name}': {err}"
+                    else:
+                        result = self.executor.run(tool_name, tool_args)
                     print(f"   Result preview: {result[:120]}...")
 
                     self.history.append({
