@@ -1,4 +1,4 @@
-# 🔬 Autonomous AI Research Agent & RAG Suite
+# Autonomous AI Research Agent & RAG Suite
 
 > An end-to-end autonomous research assistant that pairs **Retrieval-Augmented Generation (RAG)** with **Agentic multi-step reasoning**, **dynamic function calling**, **automated report synthesis**, and a sleek **React 19 research workspace**.
 
@@ -11,29 +11,29 @@
 
 ---
 
-## 📑 Table of Contents
-- [Overview](#-overview)
-- [System Architecture](#-system-architecture)
-- [Core Capabilities](#-core-capabilities)
-- [Project Structure](#-project-structure)
-- [Quick Start](#-quick-start)
-- [API Reference](#-api-reference)
-- [Agentic Tools](#-agentic-tools)
-- [Roadmap & Enhancements](#-roadmap--enhancements)
+## Table of Contents
+- [Overview](#overview)
+- [System Architecture](#system-architecture)
+- [Core Capabilities](#core-capabilities)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [API Reference](#api-reference)
+- [Agentic Tools](#agentic-tools)
+- [License](#license)
 
 ---
 
-## 🌟 Overview
+## Overview
 
 The **Autonomous AI Research Agent** bridges the gap between static document QA and autonomous deep investigation. Instead of merely answering questions against a fixed context window, the assistant can:
 1. **Autonomously Reason:** Break complex questions into sub-goals using a multi-iteration ReAct loop.
 2. **Execute Tools:** Search local PDF/MD archives with ChromaDB, query external web sources, and persist synthesized findings as markdown notes.
 3. **Generate Structured Research Reports:** Produce Executive Summaries, Comprehensive Research Briefs, and Cross-Topic Comparative Analyses with zero hallucinations.
-4. **Interactive Dashboard:** Provide researchers with an intuitive dark-mode interface built with React 19 and Vite.
+4. **Interactive Dashboard:** Provide researchers with an intuitive interface built with React 19 and Vite.
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 ```mermaid
 graph TD
@@ -69,7 +69,7 @@ graph TD
 
 ---
 
-## ✨ Core Capabilities
+## Core Capabilities
 
 ### 1. Multi-Step Agentic Reasoning (`agent.py`)
 - Employs function calling with `llama-3.3-70b-versatile` over up to 6 iterations.
@@ -87,15 +87,15 @@ graph TD
 
 ### 4. Full-Stack Research Workspace (`research-ui/`)
 - Real-time chat with streaming agent responses.
-- Document management with live file upload & indexing.
+- Document management with live file upload and indexing.
 - One-click report generator with copyable Markdown view.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
-02-Autonomous-Research-Agent/
+Autonomous-AI-Research-Agent/
 ├── agent.py                 # Multi-iteration ReAct agent with function calling
 ├── agent_main.py            # CLI entrypoint for autonomous agent mode
 ├── chunker.py               # Document chunking with sentence boundary preservation
@@ -116,18 +116,18 @@ graph TD
 └── research-ui/             # React 19 + Vite frontend application
     ├── src/
     │   ├── App.jsx          # Main research dashboard
-    │   └── App.css          # Dark-mode styling
+    │   └── App.css          # Styling
     ├── package.json
     └── vite.config.js
 ```
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.10+
-- Node.js 18+ & npm
+- Node.js 18+ and npm
 - Free Groq API Key ([console.groq.com](https://console.groq.com))
 
 ### 1. Backend Setup
@@ -181,7 +181,7 @@ python main.py
 
 ---
 
-## 📡 API Reference
+## API Reference
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -193,7 +193,7 @@ python main.py
 
 ---
 
-## 🛠️ Agentic Tools
+## Agentic Tools
 
 The autonomous agent is equipped with function definitions for:
 1. `search_docs(query: str, top_k: int = 4)`: Performs vector similarity search across indexed literature.
@@ -202,5 +202,6 @@ The autonomous agent is equipped with function definitions for:
 
 ---
 
-## 📄 License
-This project is licensed under the [MIT License](../LICENSE).
+## License
+
+This project is licensed under the MIT License.
