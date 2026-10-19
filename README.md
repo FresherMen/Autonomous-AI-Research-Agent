@@ -8,6 +8,7 @@
 ![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-red?style=flat-square)
 ![React](https://img.shields.io/badge/Frontend-React%2019%20%2B%20Vite-61DAFB?style=flat-square&logo=react)
 ![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-Ankur%20Pal-0A66C2?style=flat-square&logo=linkedin)](https://www.linkedin.com/in/ankur-pal-2b2ba9433)
 
 ---
 
@@ -199,6 +200,15 @@ The autonomous agent is equipped with function definitions for:
 1. `search_docs(query: str, top_k: int = 4)`: Performs vector similarity search across indexed literature.
 2. `search_web(query: str)`: Queries live online sources for recent developments.
 3. `save_note(title: str, content: str)`: Persists structured analysis directly into `./notes/` as a timestamped Markdown document.
+
+---
+
+## Author & Connect
+
+**Ankur Pal**  
+- **LinkedIn:** [Ankur Pal](https://www.linkedin.com/in/ankur-pal-2b2ba9433)  
+- **GitHub:** [@FresherMen](https://github.com/FresherMen)  
+- **Portfolio:** [freshermen.github.io](https://freshermen.github.io)  
 
 ---
 
