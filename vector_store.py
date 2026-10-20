@@ -59,23 +59,31 @@ class VectorStore:
         Find the top_k most similar chunks to a query vector.
         Returns a list of dicts with text, source, and similarity score.
         """
+        if self.collection.count() == 0:
+            return []
+
         results = self.collection.query(
             query_embeddings=[query_embedding],
             n_results=top_k,
             include=["documents", "metadatas", "distances"]
         )
 
+        docs = results.get('documents')
+        metas = results.get('metadatas')
+        dists = results.get('distances')
+
+        if not docs or len(docs) == 0 or not docs[0]:
+            return []
+
         hits = []
-        for text, meta, dist in zip(
-            results['documents'][0],
-            results['metadatas'][0],
-            results['distances'][0]
-        ):
+        for text, meta, dist in zip(docs[0], metas[0] if metas else [], dists[0] if dists else []):
+            if not meta:
+                continue
             hits.append({
                 "text":       text,
-                "source":     meta['source'],
-                "chunk_index": meta['index'],
-                "similarity": round(1 - dist, 3)  # ChromaDB returns distance; flip to similarity
+                "source":     meta.get('source', 'unknown'),
+                "chunk_index": meta.get('index', 0),
+                "similarity": round(1 - dist, 3) if dist is not None else 0.0
             })
 
         return hits

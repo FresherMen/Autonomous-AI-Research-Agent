@@ -8,9 +8,8 @@ load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 class ReportGenerator:
-    def __init__(self):
-        from indexer import DocumentIndexer
-        self.indexer = DocumentIndexer()
+    def __init__(self, indexer: DocumentIndexer = None):
+        self.indexer = indexer or DocumentIndexer()
 
     def bullet_summary(self, topic: str) -> dict:
         chunks = self.indexer.search(topic, top_k=6)

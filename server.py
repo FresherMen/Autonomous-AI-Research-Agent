@@ -8,6 +8,7 @@ from retriever import RAGRetriever
 from agent import ResearchAgent
 from report_generator import ReportGenerator
 from indexer import DocumentIndexer
+from tools import ToolExecutor
 from dotenv import load_dotenv
 load_dotenv()   # reads .env and puts the key into os.environ
 app = FastAPI(title="Research Assistant API")
@@ -15,11 +16,12 @@ app = FastAPI(title="Research Assistant API")
 app.add_middleware(CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# Shared instances (loaded once at startup)
-rag     = RAGRetriever()
-agent   = ResearchAgent()
-reports = ReportGenerator()
+# Shared instances (loaded once at startup to optimize memory & prevent locks)
 indexer = DocumentIndexer()
+rag     = RAGRetriever(indexer=indexer)
+executor = ToolExecutor(rag=rag)
+agent   = ResearchAgent(executor=executor)
+reports = ReportGenerator(indexer=indexer)
 
 class Question(BaseModel):
     question: str
@@ -78,9 +80,13 @@ async def list_docs():
         return {"docs": []}
     from vector_store import VectorStore
     store = VectorStore()
-    # Get unique source names from the collection
+    # Get unique source names from the collection safely
     results = store.collection.get(include=["metadatas"])
-    docs = sorted(set(m["source"] for m in results["metadatas"]))
+    metadatas = results.get("metadatas") or []
+    docs = sorted(set(
+        m.get("source") for m in metadatas 
+        if m and isinstance(m, dict) and "source" in m
+    ))
     return {"docs": docs}
 
 if __name__ == "__main__":

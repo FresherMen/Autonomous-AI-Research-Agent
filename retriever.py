@@ -11,8 +11,8 @@ class RAGRetriever:
 
     RELEVANCE_THRESHOLD = 0.35
 
-    def __init__(self):
-        self.indexer  = DocumentIndexer()
+    def __init__(self, indexer: DocumentIndexer = None):
+        self.indexer  = indexer or DocumentIndexer()
         self.builder  = PromptBuilder(max_context_chars=3000)
         self.history  = []
         self.system_prompt = (

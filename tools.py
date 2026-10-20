@@ -127,8 +127,8 @@ TOOL_SCHEMAS_OPENAI = [
 # ─────────────────────────────────────────────
 
 class ToolExecutor:
-    def __init__(self):
-        self.rag = RAGRetriever()
+    def __init__(self, rag: RAGRetriever = None):
+        self.rag = rag or RAGRetriever()
         os.makedirs("./notes", exist_ok=True)
 
     def run(self, tool_name: str, tool_args: dict) -> str:
