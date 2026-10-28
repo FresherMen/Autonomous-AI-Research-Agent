@@ -5,14 +5,20 @@ from groq import Groq
 from indexer import DocumentIndexer
 
 load_dotenv()
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 class ReportGenerator:
     def __init__(self, indexer: DocumentIndexer = None):
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise EnvironmentError("GROQ_API_KEY is not configured in environment or .env file.")
+        self.client = Groq(api_key=api_key)
         self.indexer = indexer or DocumentIndexer()
 
     def bullet_summary(self, topic: str) -> dict:
         chunks = self.indexer.search(topic, top_k=6)
+        if not chunks:
+            return {"error": "No relevant documents found for this topic.", "raw": ""}
+
         context = self._format_context(chunks)
         prompt = f"""Based ONLY on the context below, produce a JSON object.
 Return ONLY the JSON, no markdown fences, no extra text.
@@ -31,16 +37,22 @@ CONTEXT:
 
 TOPIC: {topic}"""
 
-        response = client.chat.completions.create(
+        response = self.client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             max_tokens=1000,
             temperature=0.1,
             messages=[{"role": "user", "content": prompt}]
         )
-        return self._parse_json(response.choices[0].message.content)
+        content = ""
+        if response.choices and response.choices[0].message:
+            content = response.choices[0].message.content or ""
+        return self._parse_json(content)
 
     def research_brief(self, topic: str) -> dict:
         chunks = self.indexer.search(topic, top_k=8)
+        if not chunks:
+            return {"error": "No relevant documents found for this topic.", "raw": ""}
+
         context = self._format_context(chunks)
         prompt = f"""Based ONLY on the context below, produce a JSON research brief.
 Return ONLY the JSON, no markdown fences, no extra text.
@@ -65,21 +77,35 @@ CONTEXT:
 
 TOPIC: {topic}"""
 
-        response = client.chat.completions.create(
+        response = self.client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             max_tokens=2000,
             temperature=0.2,
             messages=[{"role": "user", "content": prompt}]
         )
-        result = self._parse_json(response.choices[0].message.content)
-        total = sum(len(s['content'].split()) for s in result.get('sections', []))
-        result['word_count'] = total
+        content = ""
+        if response.choices and response.choices[0].message:
+            content = response.choices[0].message.content or ""
+        result = self._parse_json(content)
+        if isinstance(result, dict) and "sections" in result:
+            total = 0
+            for s in result.get('sections', []):
+                if isinstance(s, dict):
+                    sec_content = s.get('content') or ""
+                    total += len(str(sec_content).split())
+                elif isinstance(s, str):
+                    total += len(s.split())
+            result['word_count'] = total
         return result
 
     def comparison(self, topic_a: str, topic_b: str) -> dict:
         chunks_a = self.indexer.search(topic_a, top_k=4)
         chunks_b = self.indexer.search(topic_b, top_k=4)
-        context  = self._format_context(chunks_a + chunks_b)
+        all_chunks = chunks_a + chunks_b
+        if not all_chunks:
+            return {"error": "No relevant documents found for comparison.", "raw": ""}
+
+        context  = self._format_context(all_chunks)
         prompt = f"""Compare "{topic_a}" and "{topic_b}" based ONLY on the context.
 Return ONLY the JSON, no markdown fences, no extra text.
 
@@ -101,48 +127,72 @@ Return ONLY the JSON, no markdown fences, no extra text.
 CONTEXT:
 {context}"""
 
-        response = client.chat.completions.create(
+        response = self.client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             max_tokens=1500,
             temperature=0.2,
             messages=[{"role": "user", "content": prompt}]
         )
-        return self._parse_json(response.choices[0].message.content)
+        content = ""
+        if response.choices and response.choices[0].message:
+            content = response.choices[0].message.content or ""
+        return self._parse_json(content)
 
     def render_bullet_summary(self, data: dict) -> str:
+        if not isinstance(data, dict):
+            return f"Error generating summary: invalid output format ({type(data).__name__})"
         if "error" in data:
             return f"Error generating summary: {data['error']}\n\nRaw: {data.get('raw','')}"
         lines = [f"# {data.get('title', 'Summary')}\n"]
-        lines.append(f"> {data.get('one_liner', '')}\n")
+        if data.get('one_liner'):
+            lines.append(f"> {data.get('one_liner')}\n")
         lines.append("## Key points\n")
         for item in data.get('key_points', []):
-            lines.append(f"- {item['point']}  *(source: {item.get('source','')})*")
+            if isinstance(item, dict):
+                point = item.get('point', '')
+                source = item.get('source', '')
+                source_str = f"  *(source: {source})*" if source else ""
+                lines.append(f"- {point}{source_str}")
+            else:
+                lines.append(f"- {str(item)}")
         lines.append(f"\n*Confidence: {data.get('confidence', 'unknown')}*")
         return "\n".join(lines)
 
     def render_research_brief(self, data: dict) -> str:
+        if not isinstance(data, dict):
+            return f"Error generating brief: invalid output format ({type(data).__name__})"
         if "error" in data:
             return f"Error generating brief: {data['error']}\n\nRaw: {data.get('raw','')}"
         lines = [f"# {data.get('title', 'Research Brief')}\n"]
-        lines.append(f"**Abstract:** {data.get('abstract', '')}\n")
+        if data.get('abstract'):
+            lines.append(f"**Abstract:** {data.get('abstract')}\n")
         for section in data.get('sections', []):
-            lines.append(f"## {section['heading']}\n")
-            lines.append(section['content'])
-            srcs = ', '.join(section.get('sources', []))
-            if srcs:
-                lines.append(f"\n*Sources: {srcs}*\n")
+            if isinstance(section, dict):
+                lines.append(f"## {section.get('heading', 'Section')}\n")
+                lines.append(str(section.get('content', '')))
+                sources = section.get('sources', [])
+                if isinstance(sources, list):
+                    srcs = ', '.join(str(s) for s in sources)
+                else:
+                    srcs = str(sources)
+                if srcs:
+                    lines.append(f"\n*Sources: {srcs}*\n")
+            else:
+                lines.append(str(section))
         if data.get('key_findings'):
             lines.append("\n## Key findings\n")
             for f in data['key_findings']:
-                lines.append(f"- {f}")
+                lines.append(f"- {str(f)}")
         if data.get('gaps'):
             lines.append("\n## Gaps in the documents\n")
             for g in data['gaps']:
-                lines.append(f"- {g}")
+                lines.append(f"- {str(g)}")
         lines.append(f"\n*~{data.get('word_count', 0)} words*")
         return "\n".join(lines)
 
     def render_comparison(self, data: dict) -> str:
+        if not isinstance(data, dict):
+            return f"Error generating comparison: invalid output format ({type(data).__name__})"
         if "error" in data:
             return f"Error generating comparison: {data['error']}\n\nRaw: {data.get('raw','')}"
         a, b = data.get('topic_a', 'A'), data.get('topic_b', 'B')
@@ -150,15 +200,20 @@ CONTEXT:
         lines.append(f"| Aspect | {a} | {b} | Edge |")
         lines.append("|--------|-----|-----|------|")
         for dim in data.get('dimensions', []):
-            edge = {"A": a, "B": b, "tie": "Tie"}.get(dim.get('winner', 'tie'), 'Tie')
-            lines.append(f"| {dim['aspect']} | {dim['a']} | {dim['b']} | {edge} |")
-        lines.append(f"\n**Summary:** {data.get('summary', '')}")
-        lines.append(f"\n**Recommendation:** {data.get('recommendation', '')}")
+            if isinstance(dim, dict):
+                edge = {"A": a, "B": b, "tie": "Tie"}.get(dim.get('winner', 'tie'), 'Tie')
+                lines.append(f"| {dim.get('aspect', '')} | {dim.get('a', '')} | {dim.get('b', '')} | {edge} |")
+            else:
+                lines.append(f"| {str(dim)} | - | - | - |")
+        if data.get('summary'):
+            lines.append(f"\n**Summary:** {data.get('summary')}")
+        if data.get('recommendation'):
+            lines.append(f"\n**Recommendation:** {data.get('recommendation')}")
         return "\n".join(lines)
 
     def _format_context(self, chunks: list) -> str:
         return "\n\n".join(
-            f"[{c['source']}]\n{c['text'][:400]}" for c in chunks
+            f"[{c.get('source', 'unknown')}]\n{c.get('text', '')[:400]}" for c in chunks
         )
 
     def _parse_json(self, text: str) -> dict:

@@ -31,12 +31,25 @@ class VectorStore:
           embeddings: the vector
           metadatas:  any extra info (source file, index)
         """
-        ids         = [f"{c['source']}::chunk{c['index']}" for c in chunks]
-        documents   = [c['text']   for c in chunks]
-        metadatas   = [{"source": c['source'], "index": c['index']} for c in chunks]
+        if not chunks or not embeddings:
+            return
+
+        # Ensure lengths match
+        min_len = min(len(chunks), len(embeddings))
+        chunks = chunks[:min_len]
+        embeddings = embeddings[:min_len]
+
+        ids         = [f"{c['source']}::chunk{c.get('index', i)}" for i, c in enumerate(chunks)]
+        documents   = [c.get('text', '') for c in chunks]
+        metadatas   = [{"source": c.get('source', 'unknown'), "index": c.get('index', i)} for i, c in enumerate(chunks)]
 
         # Deduplicate — don't add the same chunk twice if we re-run
-        existing_ids = set(self.collection.get(ids=ids)['ids'])
+        try:
+            get_res = self.collection.get(ids=ids)
+            existing_ids = set(get_res.get('ids', [])) if get_res else set()
+        except Exception:
+            existing_ids = set()
+
         new_items = [(i, d, e, m) for i, d, e, m in
                      zip(ids, documents, embeddings, metadatas)
                      if i not in existing_ids]
@@ -59,12 +72,14 @@ class VectorStore:
         Find the top_k most similar chunks to a query vector.
         Returns a list of dicts with text, source, and similarity score.
         """
-        if self.collection.count() == 0:
+        total_count = self.collection.count()
+        if total_count == 0 or top_k <= 0:
             return []
 
+        n_results = min(top_k, total_count)
         results = self.collection.query(
             query_embeddings=[query_embedding],
-            n_results=top_k,
+            n_results=n_results,
             include=["documents", "metadatas", "distances"]
         )
 
@@ -76,13 +91,15 @@ class VectorStore:
             return []
 
         hits = []
-        for text, meta, dist in zip(docs[0], metas[0] if metas else [], dists[0] if dists else []):
-            if not meta:
-                continue
+        meta_list = metas[0] if (metas and len(metas) > 0) else [{}] * len(docs[0])
+        dist_list = dists[0] if (dists and len(dists) > 0) else [None] * len(docs[0])
+
+        for text, meta, dist in zip(docs[0], meta_list, dist_list):
+            meta_dict = meta if isinstance(meta, dict) else {}
             hits.append({
                 "text":       text,
-                "source":     meta.get('source', 'unknown'),
-                "chunk_index": meta.get('index', 0),
+                "source":     meta_dict.get('source', 'unknown'),
+                "chunk_index": meta_dict.get('index', 0),
                 "similarity": round(1 - dist, 3) if dist is not None else 0.0
             })
 

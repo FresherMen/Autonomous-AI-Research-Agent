@@ -5,13 +5,17 @@ from indexer import DocumentIndexer
 from prompt_builder import PromptBuilder
 
 load_dotenv()
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 class RAGRetriever:
 
     RELEVANCE_THRESHOLD = 0.35
+    MAX_HISTORY_MESSAGES = 10
 
     def __init__(self, indexer: DocumentIndexer = None):
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise EnvironmentError("GROQ_API_KEY is not configured in environment or .env file.")
+        self.client   = Groq(api_key=api_key)
         self.indexer  = indexer or DocumentIndexer()
         self.builder  = PromptBuilder(max_context_chars=3000)
         self.history  = []
@@ -24,7 +28,7 @@ class RAGRetriever:
     def ask(self, question: str, top_k: int = 4, verbose: bool = False) -> dict:
         chunks = self.indexer.search(question, top_k=top_k)
         relevant_chunks = [c for c in chunks
-                           if c['similarity'] >= self.RELEVANCE_THRESHOLD]
+                           if c.get('similarity', 0.0) >= self.RELEVANCE_THRESHOLD]
 
         if relevant_chunks:
             augmented_prompt = self.builder.build(question, relevant_chunks)
@@ -33,7 +37,11 @@ class RAGRetriever:
 
         self.history.append({"role": "user", "content": augmented_prompt})
 
-        response = client.chat.completions.create(
+        # Bound history to prevent context overflow
+        if len(self.history) > self.MAX_HISTORY_MESSAGES:
+            self.history = self.history[-self.MAX_HISTORY_MESSAGES:]
+
+        response = self.client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             max_tokens=1024,
             temperature=0.2,
@@ -42,15 +50,19 @@ class RAGRetriever:
             ] + self.history
         )
 
-        answer = response.choices[0].message.content
+        answer = ""
+        if response.choices and response.choices[0].message:
+            answer = response.choices[0].message.content or ""
+
         self.history.append({"role": "assistant", "content": answer})
 
+        usage = getattr(response, "usage", None)
         return {
             "answer":  answer,
             "chunks":  relevant_chunks,
             "tokens":  {
-                "input":  response.usage.prompt_tokens,
-                "output": response.usage.completion_tokens
+                "input":  usage.prompt_tokens if usage else 0,
+                "output": usage.completion_tokens if usage else 0
             }
         }
 

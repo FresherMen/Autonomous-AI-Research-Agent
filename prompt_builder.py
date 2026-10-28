@@ -44,8 +44,10 @@ ANSWER:"""
         total_chars = 0
 
         for i, chunk in enumerate(chunks):
-            header  = f"[Source: {chunk['source']} | Similarity: {chunk['similarity']}]"
-            passage = chunk['text'].strip()
+            source = chunk.get('source', 'unknown')
+            sim = chunk.get('similarity', 0.0)
+            header  = f"[Source: {source} | Similarity: {sim}]"
+            passage = chunk.get('text', '').strip()
             entry   = f"{header}\n{passage}\n"
 
             # Stop adding chunks if we'd exceed the character budget

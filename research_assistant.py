@@ -3,12 +3,15 @@ from dotenv import load_dotenv
 from groq import Groq
 
 load_dotenv()
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 class ResearchAssistant:
     """Base Conversational Q&A Engine — Step 1 of 5"""
 
     def __init__(self):
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            raise EnvironmentError("GROQ_API_KEY is not configured in environment or .env file.")
+        self.client = Groq(api_key=api_key)
         self.history = []
         self.system = (
             "You are an expert research assistant helping users understand "
@@ -19,14 +22,16 @@ class ResearchAssistant:
     def ask(self, question: str) -> str:
         self.history.append({"role": "user", "content": question})
 
-        response = client.chat.completions.create(
+        response = self.client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             max_tokens=1024,
             temperature=0.3,       # Low temperature for factual precision
             messages=[{"role": "system", "content": self.system}] + self.history
         )
 
-        answer = response.choices[0].message.content
+        answer = ""
+        if response.choices and response.choices[0].message:
+            answer = response.choices[0].message.content or ""
         self.history.append({"role": "assistant", "content": answer})
 
         if hasattr(response, "usage") and response.usage:
@@ -45,7 +50,7 @@ if __name__ == "__main__":
     while True:
         try:
             user_input = input("You: ").strip()
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             print("\nGoodbye!")
             break
 

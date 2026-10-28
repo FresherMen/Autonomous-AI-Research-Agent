@@ -1,4 +1,7 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()   # reads .env and puts the key into os.environ before imports
+
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,8 +12,7 @@ from agent import ResearchAgent
 from report_generator import ReportGenerator
 from indexer import DocumentIndexer
 from tools import ToolExecutor
-from dotenv import load_dotenv
-load_dotenv()   # reads .env and puts the key into os.environ
+
 app = FastAPI(title="Research Assistant API")
 
 app.add_middleware(CORSMiddleware,
@@ -45,8 +47,8 @@ async def ask_agent(q: Question):
     answer = agent.run(q.question)
     return {
         "answer":     answer,
-        "tool_calls": [],   # extend agent.py to capture these if you want
-        "sources":    []
+        "tool_calls": getattr(agent, "last_tool_calls", []),
+        "sources":    getattr(agent, "last_sources", [])
     }
 
 @app.post("/report")
@@ -67,27 +69,32 @@ async def generate_report(r: ReportRequest):
 @app.post("/index")
 async def index_files(files: list[UploadFile] = File(...)):
     os.makedirs("./docs", exist_ok=True)
+    indexed = []
     for f in files:
-        path = f"./docs/{f.filename}"
+        filename = os.path.basename(f.filename or "uploaded_file")
+        path = os.path.join("./docs", filename)
         with open(path, "wb") as out:
             out.write(await f.read())
-        indexer.index_file(path)
-    return {"indexed": [f.filename for f in files]}
+        try:
+            indexer.index_file(path)
+            indexed.append(filename)
+        except Exception as e:
+            print(f"Error indexing {filename}: {e}")
+    return {"indexed": indexed}
 
 @app.get("/docs")
 async def list_docs():
-    if not os.path.exists("./chroma_db"):
+    try:
+        results = indexer.store.collection.get(include=["metadatas"])
+        metadatas = results.get("metadatas") or []
+        docs = sorted(set(
+            m.get("source") for m in metadatas 
+            if m and isinstance(m, dict) and "source" in m
+        ))
+        return {"docs": docs}
+    except Exception as e:
+        print(f"Error listing docs: {e}")
         return {"docs": []}
-    from vector_store import VectorStore
-    store = VectorStore()
-    # Get unique source names from the collection safely
-    results = store.collection.get(include=["metadatas"])
-    metadatas = results.get("metadatas") or []
-    docs = sorted(set(
-        m.get("source") for m in metadatas 
-        if m and isinstance(m, dict) and "source" in m
-    ))
-    return {"docs": docs}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)

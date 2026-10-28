@@ -17,7 +17,7 @@ def main():
     while True:
         try:
             user_input = input("You: ").strip()
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             print("\nGoodbye!")
             break
 

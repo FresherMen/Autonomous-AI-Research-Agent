@@ -19,12 +19,19 @@ class DocumentIndexer:
 
     def index_file(self, file_path: str):
         print(f"\nIndexing: {file_path}")
+        if not os.path.exists(file_path):
+            print(f"  File not found: {file_path}. Skipping.")
+            return
 
+        lower_path = file_path.lower()
         # Step 1: Chunk
-        if file_path.endswith(".pdf"):
+        if lower_path.endswith(".pdf"):
             chunks = self.chunker.chunk_pdf(file_path)
-        else:
+        elif lower_path.endswith((".txt", ".md")):
             chunks = self.chunker.chunk_file(file_path)
+        else:
+            print(f"  Skipping unsupported file format: {file_path}")
+            return
 
         if not chunks:
             print("  No content found. Skipping.")
@@ -41,8 +48,13 @@ class DocumentIndexer:
 
     def index_folder(self, folder_path: str):
         """Index every .pdf, .txt, and .md file in a folder."""
+        if not os.path.exists(folder_path):
+            os.makedirs(folder_path, exist_ok=True)
+            print(f"Folder '{folder_path}' created (empty).")
+            return
+
         supported = ('.pdf', '.txt', '.md')
-        files = [f for f in os.listdir(folder_path) if f.endswith(supported)]
+        files = [f for f in os.listdir(folder_path) if f.lower().endswith(supported)]
         print(f"Found {len(files)} documents in '{folder_path}'")
         for filename in files:
             self.index_file(os.path.join(folder_path, filename))

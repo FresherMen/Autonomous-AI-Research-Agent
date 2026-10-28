@@ -129,31 +129,54 @@ TOOL_SCHEMAS_OPENAI = [
 class ToolExecutor:
     def __init__(self, rag: RAGRetriever = None):
         self.rag = rag or RAGRetriever()
+        self.last_sources = []
         os.makedirs("./notes", exist_ok=True)
 
-    def run(self, tool_name: str, tool_args: dict) -> str:
+    def run(self, tool_name: str, tool_args: dict = None) -> str:
         """
         Dispatch a tool call from the agent.
         Returns a string result that gets sent back to the LLM.
         """
+        if not isinstance(tool_args, dict):
+            tool_args = {}
+
         print(f"\n  [Tool] {tool_name}({json.dumps(tool_args, indent=2)})")
 
-        if tool_name == "search_docs":
-            return self._search_docs(**tool_args)
+        try:
+            if tool_name == "search_docs":
+                return self._search_docs(**tool_args)
 
-        elif tool_name == "search_web":
-            return self._search_web(**tool_args)
+            elif tool_name == "search_web":
+                return self._search_web(**tool_args)
 
-        elif tool_name == "save_note":
-            return self._save_note(**tool_args)
+            elif tool_name == "save_note":
+                return self._save_note(**tool_args)
 
-        else:
-            return f"Error: unknown tool '{tool_name}'"
+            else:
+                return f"Error: unknown tool '{tool_name}'"
+        except Exception as e:
+            print(f"  [Tool Error] {tool_name}: {e}")
+            return f"Error executing tool '{tool_name}': {str(e)}"
 
     # ── Tool implementations ──────────────────
 
-    def _search_docs(self, query: str, top_k: int = 4) -> str:
-        chunks = self.rag.indexer.search(query, top_k=top_k)
+    def _search_docs(self, query: str = "", top_k: int = 4, **kwargs) -> str:
+        query_str = str(query or "").strip()
+        if not query_str:
+            return "No query provided for document search."
+
+        try:
+            k = int(top_k)
+        except (ValueError, TypeError):
+            k = 4
+
+        chunks = self.rag.indexer.search(query_str, top_k=k)
+
+        # Track sources for frontend/reporting
+        self.last_sources = [
+            {"source": c.get("source", "unknown"), "chunk_index": c.get("chunk_index", 0)}
+            for c in chunks
+        ]
 
         if not chunks:
             return "No relevant documents found for this query."
@@ -161,31 +184,35 @@ class ToolExecutor:
         lines = [f"Found {len(chunks)} relevant passages:\n"]
         for i, c in enumerate(chunks, 1):
             lines.append(
-                f"[{i}] Source: {c['source']} | Similarity: {c['similarity']}\n"
-                f"{c['text'][:400]}\n"
+                f"[{i}] Source: {c.get('source', 'unknown')} | Similarity: {c.get('similarity', 0.0)}\n"
+                f"{c.get('text', '')[:400]}\n"
             )
         return "\n".join(lines)
 
-    def _search_web(self, query: str) -> str:
+    def _search_web(self, query: str = "", **kwargs) -> str:
         # Simulated web search for this tutorial.
         # In production, plug in SerpAPI, Tavily, or DuckDuckGo here.
-        # e.g.:  results = serpapi.search(query)
+        query_str = str(query or "").strip()
         return (
-            f"[Simulated web search for: '{query}']\n"
+            f"[Simulated web search for: '{query_str}']\n"
             f"In a real deployment, connect a search API here (Tavily, SerpAPI, etc.).\n"
             f"For now, returning: 'No live web results — using document knowledge only.'"
         )
 
-    def _save_note(self, title: str, content: str) -> str:
+    def _save_note(self, title: str = "note", content: str = "", **kwargs) -> str:
         # Make a safe filename from the title
+        title_str = str(title or "note").strip()
         safe_title = "".join(c if c.isalnum() or c in " _-" else "_"
-                             for c in title).strip().replace(" ", "_")
+                             for c in title_str).strip().replace(" ", "_")
+        if not safe_title:
+            safe_title = "note"
+
         timestamp   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         filename    = f"./notes/{safe_title}_{timestamp}.md"
 
         with open(filename, "w", encoding="utf-8") as f:
-            f.write(f"# {title}\n\n")
+            f.write(f"# {title_str}\n\n")
             f.write(f"*Saved: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}*\n\n")
-            f.write(content)
+            f.write(str(content or ""))
 
         return f"Note saved successfully to: {filename}"
