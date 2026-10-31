@@ -35,35 +35,52 @@ class ReportRequest(BaseModel):
 
 @app.post("/ask")
 async def ask(q: Question):
-    result = rag.ask(q.question)
-    return {
-        "answer":  result["answer"],
-        "sources": result["chunks"],
-        "tokens":  result["tokens"]
-    }
+    try:
+        result = rag.ask(q.question)
+        return {
+            "answer":  result.get("answer", ""),
+            "sources": result.get("chunks", []),
+            "tokens":  result.get("tokens", {"input": 0, "output": 0})
+        }
+    except Exception as e:
+        return {
+            "answer":  f"Error: {e}",
+            "sources": [],
+            "tokens":  {"input": 0, "output": 0}
+        }
 
 @app.post("/agent")
 async def ask_agent(q: Question):
-    answer = agent.run(q.question)
-    return {
-        "answer":     answer,
-        "tool_calls": getattr(agent, "last_tool_calls", []),
-        "sources":    getattr(agent, "last_sources", [])
-    }
+    try:
+        answer = agent.run(q.question)
+        return {
+            "answer":     answer,
+            "tool_calls": getattr(agent, "last_tool_calls", []),
+            "sources":    getattr(agent, "last_sources", [])
+        }
+    except Exception as e:
+        return {
+            "answer":     f"Error: {e}",
+            "tool_calls": [],
+            "sources":    []
+        }
 
 @app.post("/report")
 async def generate_report(r: ReportRequest):
-    if r.type == "bullet_summary":
-        data     = reports.bullet_summary(r.topic)
-        rendered = reports.render_bullet_summary(data)
-    elif r.type == "research_brief":
-        data     = reports.research_brief(r.topic)
-        rendered = reports.render_research_brief(data)
-    elif r.type == "comparison":
-        data     = reports.comparison(r.topic, r.topic_b)
-        rendered = reports.render_comparison(data)
-    else:
-        rendered = "Unknown report type"
+    try:
+        if r.type == "bullet_summary":
+            data     = reports.bullet_summary(r.topic)
+            rendered = reports.render_bullet_summary(data)
+        elif r.type == "research_brief":
+            data     = reports.research_brief(r.topic)
+            rendered = reports.render_research_brief(data)
+        elif r.type == "comparison":
+            data     = reports.comparison(r.topic, r.topic_b)
+            rendered = reports.render_comparison(data)
+        else:
+            rendered = f"Unknown report type: '{r.type}'"
+    except Exception as e:
+        rendered = f"Error generating report: {e}"
     return {"rendered": rendered}
 
 @app.post("/index")
@@ -76,8 +93,9 @@ async def index_files(files: list[UploadFile] = File(...)):
         with open(path, "wb") as out:
             out.write(await f.read())
         try:
-            indexer.index_file(path)
-            indexed.append(filename)
+            count = indexer.index_file(path)
+            if count > 0:
+                indexed.append(filename)
         except Exception as e:
             print(f"Error indexing {filename}: {e}")
     return {"indexed": indexed}
@@ -85,12 +103,15 @@ async def index_files(files: list[UploadFile] = File(...)):
 @app.get("/docs")
 async def list_docs():
     try:
-        results = indexer.store.collection.get(include=["metadatas"])
-        metadatas = results.get("metadatas") or []
-        docs = sorted(set(
-            m.get("source") for m in metadatas 
-            if m and isinstance(m, dict) and "source" in m
-        ))
+        if hasattr(indexer.store, "list_sources"):
+            docs = indexer.store.list_sources()
+        else:
+            results = indexer.store.collection.get(include=["metadatas"])
+            metadatas = results.get("metadatas") or []
+            docs = sorted(set(
+                str(m["source"]) for m in metadatas 
+                if m and isinstance(m, dict) and m.get("source")
+            ))
         return {"docs": docs}
     except Exception as e:
         print(f"Error listing docs: {e}")

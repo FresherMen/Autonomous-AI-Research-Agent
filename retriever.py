@@ -26,6 +26,11 @@ class RAGRetriever:
         )
 
     def ask(self, question: str, top_k: int = 4, verbose: bool = False) -> dict:
+        try:
+            top_k = int(top_k)
+        except (ValueError, TypeError):
+            top_k = 4
+
         chunks = self.indexer.search(question, top_k=top_k)
         relevant_chunks = [c for c in chunks
                            if c.get('similarity', 0.0) >= self.RELEVANCE_THRESHOLD]
@@ -37,33 +42,39 @@ class RAGRetriever:
 
         self.history.append({"role": "user", "content": augmented_prompt})
 
-        # Bound history to prevent context overflow
+        # Bound history to prevent context overflow and ensure history begins with a user turn
         if len(self.history) > self.MAX_HISTORY_MESSAGES:
             self.history = self.history[-self.MAX_HISTORY_MESSAGES:]
+            while self.history and self.history[0].get("role") != "user":
+                self.history.pop(0)
 
-        response = self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            max_tokens=1024,
-            temperature=0.2,
-            messages=[
-                {"role": "system", "content": self.system_prompt}
-            ] + self.history
-        )
-
-        answer = ""
-        if response.choices and response.choices[0].message:
-            answer = response.choices[0].message.content or ""
-
-        self.history.append({"role": "assistant", "content": answer})
-
-        usage = getattr(response, "usage", None)
-        return {
-            "answer":  answer,
-            "chunks":  relevant_chunks,
-            "tokens":  {
+        try:
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                max_tokens=1024,
+                temperature=0.2,
+                messages=[
+                    {"role": "system", "content": self.system_prompt}
+                ] + self.history
+            )
+            answer = ""
+            if response.choices and response.choices[0].message:
+                answer = response.choices[0].message.content or ""
+            usage = getattr(response, "usage", None)
+            tokens = {
                 "input":  usage.prompt_tokens if usage else 0,
                 "output": usage.completion_tokens if usage else 0
             }
+        except Exception as e:
+            answer = f"Error communicating with model: {e}"
+            tokens = {"input": 0, "output": 0}
+
+        self.history.append({"role": "assistant", "content": answer})
+
+        return {
+            "answer":  answer,
+            "chunks":  relevant_chunks,
+            "tokens":  tokens
         }
 
     def reset_conversation(self):

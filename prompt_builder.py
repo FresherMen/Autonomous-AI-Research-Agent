@@ -10,7 +10,7 @@ class PromptBuilder:
 
     def __init__(self, max_context_chars: int = 3000):
         # Safety limit: don't let context balloon the token count
-        self.max_context_chars = max_context_chars
+        self.max_context_chars = max(100, int(max_context_chars))
 
     def build(self, question: str, chunks: list[dict]) -> str:
         """
@@ -52,7 +52,16 @@ ANSWER:"""
 
             # Stop adding chunks if we'd exceed the character budget
             if total_chars + len(entry) > self.max_context_chars:
-                lines.append(f"[... {len(chunks) - i} more chunks omitted for length]")
+                if total_chars == 0:
+                    # Truncate first chunk so we don't end up with completely empty context
+                    allowed = max(50, self.max_context_chars - len(header) - 10)
+                    truncated_entry = f"{header}\n{passage[:allowed]}...\n"
+                    lines.append(truncated_entry)
+                    total_chars += len(truncated_entry)
+                    if len(chunks) > 1:
+                        lines.append(f"[... {len(chunks) - 1} more chunks omitted for length]")
+                else:
+                    lines.append(f"[... {len(chunks) - i} more chunks omitted for length]")
                 break
 
             lines.append(entry)

@@ -39,9 +39,24 @@ class VectorStore:
         chunks = chunks[:min_len]
         embeddings = embeddings[:min_len]
 
-        ids         = [f"{c['source']}::chunk{c.get('index', i)}" for i, c in enumerate(chunks)]
-        documents   = [c.get('text', '') for c in chunks]
-        metadatas   = [{"source": c.get('source', 'unknown'), "index": c.get('index', i)} for i, c in enumerate(chunks)]
+        unique_items = []
+        seen_batch_ids = set()
+        for i, (chunk, emb) in enumerate(zip(chunks, embeddings)):
+            src = str(chunk.get("source") or "unknown")
+            idx = chunk.get("index") if chunk.get("index") is not None else i
+            chunk_id = f"{src}::chunk{idx}"
+            if chunk_id in seen_batch_ids:
+                chunk_id = f"{chunk_id}_{i}"
+            seen_batch_ids.add(chunk_id)
+
+            unique_items.append((
+                chunk_id,
+                str(chunk.get("text", "")),
+                emb,
+                {"source": src, "index": idx}
+            ))
+
+        ids = [item[0] for item in unique_items]
 
         # Deduplicate — don't add the same chunk twice if we re-run
         try:
@@ -50,9 +65,7 @@ class VectorStore:
         except Exception:
             existing_ids = set()
 
-        new_items = [(i, d, e, m) for i, d, e, m in
-                     zip(ids, documents, embeddings, metadatas)
-                     if i not in existing_ids]
+        new_items = [item for item in unique_items if item[0] not in existing_ids]
 
         if not new_items:
             print("  All chunks already indexed. Skipping.")
@@ -72,16 +85,28 @@ class VectorStore:
         Find the top_k most similar chunks to a query vector.
         Returns a list of dicts with text, source, and similarity score.
         """
+        if not query_embedding:
+            return []
+
+        try:
+            top_k = int(top_k)
+        except (ValueError, TypeError):
+            top_k = 4
+
         total_count = self.collection.count()
         if total_count == 0 or top_k <= 0:
             return []
 
         n_results = min(top_k, total_count)
-        results = self.collection.query(
-            query_embeddings=[query_embedding],
-            n_results=n_results,
-            include=["documents", "metadatas", "distances"]
-        )
+        try:
+            results = self.collection.query(
+                query_embeddings=[query_embedding],
+                n_results=n_results,
+                include=["documents", "metadatas", "distances"]
+            )
+        except Exception as e:
+            print(f"Vector search error: {e}")
+            return []
 
         docs = results.get('documents')
         metas = results.get('metadatas')
@@ -96,14 +121,32 @@ class VectorStore:
 
         for text, meta, dist in zip(docs[0], meta_list, dist_list):
             meta_dict = meta if isinstance(meta, dict) else {}
+            if dist is not None:
+                sim = round(max(-1.0, min(1.0, 1.0 - dist)), 3)
+            else:
+                sim = 0.0
+
             hits.append({
-                "text":       text,
-                "source":     meta_dict.get('source', 'unknown'),
+                "text":        text,
+                "source":      meta_dict.get('source', 'unknown'),
                 "chunk_index": meta_dict.get('index', 0),
-                "similarity": round(1 - dist, 3) if dist is not None else 0.0
+                "similarity":  sim
             })
 
         return hits
+
+    def list_sources(self) -> list[str]:
+        """Return a sorted list of unique source document names."""
+        try:
+            results = self.collection.get(include=["metadatas"])
+            metadatas = results.get("metadatas") or []
+            return sorted(set(
+                str(m["source"]) for m in metadatas
+                if m and isinstance(m, dict) and m.get("source")
+            ))
+        except Exception as e:
+            print(f"Error listing sources: {e}")
+            return []
 
     def count(self) -> int:
         return self.collection.count()

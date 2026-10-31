@@ -9,8 +9,8 @@ class DocumentChunker:
     """
 
     def __init__(self, chunk_size: int = 500, overlap: int = 50):
-        self.chunk_size = chunk_size
-        self.overlap = overlap
+        self.chunk_size = max(10, int(chunk_size))
+        self.overlap = max(0, min(int(overlap), self.chunk_size - 1))
 
     def chunk_text(self, text: str, source_name: str = "unknown", **kwargs) -> list[dict]:
         """
@@ -26,7 +26,6 @@ class DocumentChunker:
             return []
 
         chunks = []
-        step = max(1, self.chunk_size - self.overlap)   # ensure positive advancement
         start = 0
 
         while start < len(text):
@@ -35,38 +34,73 @@ class DocumentChunker:
 
             # Try to end at a sentence boundary instead of mid-word
             if end < len(text):
-                last_period = chunk_text.rfind('.')
-                if last_period > self.chunk_size * 0.5:  # only if period is in the second half
-                    chunk_text = chunk_text[:last_period + 1]
+                half = int(len(chunk_text) * 0.5)
+                best_break = -1
+                for punct in ('. ', '? ', '! ', '.\n', '?\n', '!\n'):
+                    pos = chunk_text.rfind(punct, half)
+                    if pos != -1 and (best_break == -1 or pos + 1 > best_break):
+                        best_break = pos + 1
+                if best_break == -1:
+                    pos = chunk_text.rfind('.', half)
+                    if pos != -1:
+                        best_break = pos + 1
+
+                if best_break > half:
+                    chunk_text = chunk_text[:best_break]
 
             cleaned = chunk_text.strip()
             if cleaned:
                 chunks.append({
                     "text":   cleaned,
-                    "source": source_name,
+                    "source": str(source_name),
                     "index":  len(chunks)
                 })
 
-            start += step
+            if end >= len(text):
+                break
+
+            # Advance without skipping intermediate text
+            next_start = start + len(chunk_text) - self.overlap
+            start = max(start + 1, next_start)
 
         print(f"  '{source_name}' → {len(chunks)} chunks")
         return chunks
 
     def chunk_pdf(self, pdf_path: str) -> list[dict]:
         import pypdf
-        reader = pypdf.PdfReader(pdf_path)
+        if not os.path.exists(pdf_path):
+            print(f"  File not found: {pdf_path}")
+            return []
+
         full_text = ""
-        for page in reader.pages:
-            page_text = page.extract_text()
-            if page_text:
-                full_text += page_text + "\n"
+        try:
+            reader = pypdf.PdfReader(pdf_path)
+            for page in reader.pages:
+                try:
+                    page_text = page.extract_text()
+                    if page_text:
+                        full_text += page_text + "\n"
+                except Exception as pe:
+                    print(f"  Warning: failed to extract text from a page in {pdf_path}: {pe}")
+        except Exception as e:
+            print(f"  Error reading PDF '{pdf_path}': {e}")
+            return []
 
         source_name = os.path.basename(pdf_path)
         return self.chunk_text(full_text, source_name)
 
     def chunk_file(self, file_path: str) -> list[dict]:
         """Load a .txt or .md file and chunk it."""
-        with open(file_path, "r", encoding="utf-8", errors="replace") as f:
-            text = f.read()
+        if not os.path.exists(file_path):
+            print(f"  File not found: {file_path}")
+            return []
+
+        try:
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                text = f.read()
+        except Exception as e:
+            print(f"  Error reading file '{file_path}': {e}")
+            return []
+
         source_name = os.path.basename(file_path)
-        return self.chunk_text(text, source_name)
+        return self.chunk_text(text, source_name)

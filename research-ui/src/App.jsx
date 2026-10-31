@@ -244,6 +244,16 @@ const styles = `
   .msg-row { animation: fadeIn 0.2s ease-out; }
 `
 
+// ── Safe HTML escaping ── //
+function escapeHtml(text) {
+  return String(text || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;")
+}
+
 // ── Render markdown-like report text into HTML ── //
 function renderMarkdown(text) {
   if (!text) return ""
@@ -258,11 +268,11 @@ function renderMarkdown(text) {
     tableRows.forEach((row, i) => {
       const cells = row.split("|").map(c => c.trim()).filter(Boolean)
       if (i === 0) {
-        t += "<tr>" + cells.map(c => `<th>${c}</th>`).join("") + "</tr>"
+        t += "<tr>" + cells.map(c => `<th>${escapeHtml(c)}</th>`).join("") + "</tr>"
       } else if (row.match(/^[\s|:-]+$/)) {
         // skip separator row
       } else {
-        t += "<tr>" + cells.map(c => `<td>${c}</td>`).join("") + "</tr>"
+        t += "<tr>" + cells.map(c => `<td>${escapeHtml(c)}</td>`).join("") + "</tr>"
       }
     })
     t += "</table>"
@@ -279,9 +289,9 @@ function renderMarkdown(text) {
     }
     if (inTable) flushTable()
 
-    if (line.startsWith("# "))       html += `<h1>${line.slice(2)}</h1>`
-    else if (line.startsWith("## ")) html += `<h2>${line.slice(3)}</h2>`
-    else if (line.startsWith("> "))  html += `<blockquote>${line.slice(2)}</blockquote>`
+    if (line.startsWith("# "))       html += `<h1>${escapeHtml(line.slice(2))}</h1>`
+    else if (line.startsWith("## ")) html += `<h2>${escapeHtml(line.slice(3))}</h2>`
+    else if (line.startsWith("> "))  html += `<blockquote>${escapeHtml(line.slice(2))}</blockquote>`
     else if (line.startsWith("- "))  html += `<ul><li>${formatInline(line.slice(2))}</li></ul>`
     else if (line.trim() === "")     html += ""
     else html += `<p>${formatInline(line)}</p>`
@@ -294,7 +304,7 @@ function renderMarkdown(text) {
 }
 
 function formatInline(text) {
-  return text
+  return escapeHtml(text)
     .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.*?)\*/g, "<em>$1</em>")
     .replace(/`(.*?)`/g, `<code style="font-family:IBM Plex Mono,monospace;font-size:11px;background:rgba(255,255,255,0.06);padding:1px 5px;border-radius:3px;">$1</code>`)
@@ -373,11 +383,16 @@ function UploadZone({ onUpload, docs }) {
 
   const handleFiles = async (files) => {
     setBusy(true)
-    const form = new FormData()
-    Array.from(files).forEach(f => form.append("files", f))
-    await fetch(`${API}/index`, { method: "POST", body: form })
-    setBusy(false)
-    onUpload()
+    try {
+      const form = new FormData()
+      Array.from(files).forEach(f => form.append("files", f))
+      await fetch(`${API}/index`, { method: "POST", body: form })
+    } catch (err) {
+      console.error("Failed to upload files:", err)
+    } finally {
+      setBusy(false)
+      onUpload()
+    }
   }
 
   return (
@@ -452,7 +467,7 @@ function ReportPanel({ onGenerate, loading }) {
         <button
           className="gen-btn"
           onClick={() => { onGenerate(type, topic, topicB); setTopic(""); setTopicB("") }}
-          disabled={!topic.trim() || loading}
+          disabled={!topic.trim() || (type === "comparison" && !topicB.trim()) || loading}
         >
           {loading ? "Generating…" : `Generate ${labels[type]} ↗`}
         </button>

@@ -31,6 +31,7 @@ def main():
 
         if user_input.lower() == "reset":
             assistant.reset_conversation()
+            last_result = None
             continue
 
         if user_input.lower() == "verbose":
@@ -38,16 +39,22 @@ def main():
             print(f"Verbose mode: {'ON' if verbose else 'OFF'}")
             continue
 
-        if user_input.lower() == "sources" and last_result:
-            print("\nSources from last answer:")
-            for c in last_result['chunks']:
-                print(f"  [{c['similarity']:.2f}] {c['source']}")
-                print(f"  {c['text'][:150]}...\n")
+        if user_input.lower() == "sources":
+            if not last_result or not last_result.get('chunks'):
+                print("\nNo sources available yet. Ask a question first.\n")
+            else:
+                print("\nSources from last answer:")
+                for c in last_result['chunks']:
+                    sim = c.get('similarity')
+                    sim_str = f"{sim:.2f}" if isinstance(sim, (int, float)) else "0.00"
+                    print(f"  [{sim_str}] {c.get('source', 'unknown')}")
+                    print(f"  {c.get('text', '')[:150]}...\n")
             continue
 
         if user_input.lower() == "index":
             path = input("File path: ").strip()
-            assistant.indexer.index_file(path)
+            count = assistant.indexer.index_file(path)
+            print(f"Indexed {count} chunks.")
             continue
 
         # Normal question — run the RAG pipeline

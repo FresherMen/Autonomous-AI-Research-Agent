@@ -37,16 +37,19 @@ CONTEXT:
 
 TOPIC: {topic}"""
 
-        response = self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            max_tokens=1000,
-            temperature=0.1,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        content = ""
-        if response.choices and response.choices[0].message:
-            content = response.choices[0].message.content or ""
-        return self._parse_json(content)
+        try:
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                max_tokens=1000,
+                temperature=0.1,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            content = ""
+            if response.choices and response.choices[0].message:
+                content = response.choices[0].message.content or ""
+            return self._parse_json(content)
+        except Exception as e:
+            return {"error": f"LLM error: {e}", "raw": ""}
 
     def research_brief(self, topic: str) -> dict:
         chunks = self.indexer.search(topic, top_k=8)
@@ -77,26 +80,29 @@ CONTEXT:
 
 TOPIC: {topic}"""
 
-        response = self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            max_tokens=2000,
-            temperature=0.2,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        content = ""
-        if response.choices and response.choices[0].message:
-            content = response.choices[0].message.content or ""
-        result = self._parse_json(content)
-        if isinstance(result, dict) and "sections" in result:
-            total = 0
-            for s in result.get('sections', []):
-                if isinstance(s, dict):
-                    sec_content = s.get('content') or ""
-                    total += len(str(sec_content).split())
-                elif isinstance(s, str):
-                    total += len(s.split())
-            result['word_count'] = total
-        return result
+        try:
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                max_tokens=2000,
+                temperature=0.2,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            content = ""
+            if response.choices and response.choices[0].message:
+                content = response.choices[0].message.content or ""
+            result = self._parse_json(content)
+            if isinstance(result, dict) and isinstance(result.get("sections"), list):
+                total = 0
+                for s in result.get('sections', []):
+                    if isinstance(s, dict):
+                        sec_content = s.get('content') or ""
+                        total += len(str(sec_content).split())
+                    elif isinstance(s, str):
+                        total += len(s.split())
+                result['word_count'] = total
+            return result
+        except Exception as e:
+            return {"error": f"LLM error: {e}", "raw": ""}
 
     def comparison(self, topic_a: str, topic_b: str) -> dict:
         chunks_a = self.indexer.search(topic_a, top_k=4)
@@ -127,16 +133,19 @@ Return ONLY the JSON, no markdown fences, no extra text.
 CONTEXT:
 {context}"""
 
-        response = self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            max_tokens=1500,
-            temperature=0.2,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        content = ""
-        if response.choices and response.choices[0].message:
-            content = response.choices[0].message.content or ""
-        return self._parse_json(content)
+        try:
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                max_tokens=1500,
+                temperature=0.2,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            content = ""
+            if response.choices and response.choices[0].message:
+                content = response.choices[0].message.content or ""
+            return self._parse_json(content)
+        except Exception as e:
+            return {"error": f"LLM error: {e}", "raw": ""}
 
     def render_bullet_summary(self, data: dict) -> str:
         if not isinstance(data, dict):
@@ -147,7 +156,14 @@ CONTEXT:
         if data.get('one_liner'):
             lines.append(f"> {data.get('one_liner')}\n")
         lines.append("## Key points\n")
-        for item in data.get('key_points', []):
+        
+        key_points = data.get('key_points', [])
+        if isinstance(key_points, str):
+            key_points = [{"point": key_points}]
+        elif not isinstance(key_points, list):
+            key_points = []
+
+        for item in key_points:
             if isinstance(item, dict):
                 point = item.get('point', '')
                 source = item.get('source', '')
@@ -166,7 +182,14 @@ CONTEXT:
         lines = [f"# {data.get('title', 'Research Brief')}\n"]
         if data.get('abstract'):
             lines.append(f"**Abstract:** {data.get('abstract')}\n")
-        for section in data.get('sections', []):
+        
+        sections = data.get('sections', [])
+        if isinstance(sections, str):
+            sections = [{"heading": "Overview", "content": sections}]
+        elif not isinstance(sections, list):
+            sections = []
+
+        for section in sections:
             if isinstance(section, dict):
                 lines.append(f"## {section.get('heading', 'Section')}\n")
                 lines.append(str(section.get('content', '')))
@@ -179,14 +202,27 @@ CONTEXT:
                     lines.append(f"\n*Sources: {srcs}*\n")
             else:
                 lines.append(str(section))
-        if data.get('key_findings'):
+
+        key_findings = data.get('key_findings', [])
+        if isinstance(key_findings, str):
+            key_findings = [key_findings]
+        elif not isinstance(key_findings, list):
+            key_findings = []
+        if key_findings:
             lines.append("\n## Key findings\n")
-            for f in data['key_findings']:
+            for f in key_findings:
                 lines.append(f"- {str(f)}")
-        if data.get('gaps'):
+
+        gaps = data.get('gaps', [])
+        if isinstance(gaps, str):
+            gaps = [gaps]
+        elif not isinstance(gaps, list):
+            gaps = []
+        if gaps:
             lines.append("\n## Gaps in the documents\n")
-            for g in data['gaps']:
+            for g in gaps:
                 lines.append(f"- {str(g)}")
+
         lines.append(f"\n*~{data.get('word_count', 0)} words*")
         return "\n".join(lines)
 
@@ -199,7 +235,14 @@ CONTEXT:
         lines = [f"# {a} vs {b}\n"]
         lines.append(f"| Aspect | {a} | {b} | Edge |")
         lines.append("|--------|-----|-----|------|")
-        for dim in data.get('dimensions', []):
+
+        dimensions = data.get('dimensions', [])
+        if isinstance(dimensions, str):
+            dimensions = [{"aspect": "General", "a": dimensions, "b": "-", "winner": "tie"}]
+        elif not isinstance(dimensions, list):
+            dimensions = []
+
+        for dim in dimensions:
             if isinstance(dim, dict):
                 edge = {"A": a, "B": b, "tie": "Tie"}.get(dim.get('winner', 'tie'), 'Tie')
                 lines.append(f"| {dim.get('aspect', '')} | {dim.get('a', '')} | {dim.get('b', '')} | {edge} |")
@@ -223,21 +266,28 @@ CONTEXT:
             parts = clean.split("```")
             for part in parts:
                 part = part.strip()
-                if part.startswith("json"):
+                if part.lower().startswith("json"):
                     part = part[4:].strip()
                 try:
-                    return json.loads(part)
+                    res = json.loads(part)
+                    if isinstance(res, dict):
+                        return res
                 except:
                     continue
         try:
-            return json.loads(clean)
+            res = json.loads(clean)
+            if isinstance(res, dict):
+                return res
         except json.JSONDecodeError as e:
             # Try to find JSON object inside the text
             start = clean.find('{')
             end   = clean.rfind('}')
-            if start != -1 and end != -1:
+            if start != -1 and end != -1 and end > start:
                 try:
-                    return json.loads(clean[start:end+1])
+                    res = json.loads(clean[start:end+1])
+                    if isinstance(res, dict):
+                        return res
                 except:
                     pass
             return {"error": str(e), "raw": text}
+        return {"error": "Failed to parse JSON object from output", "raw": text}

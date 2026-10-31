@@ -22,20 +22,24 @@ class ResearchAssistant:
     def ask(self, question: str) -> str:
         self.history.append({"role": "user", "content": question})
 
-        response = self.client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            max_tokens=1024,
-            temperature=0.3,       # Low temperature for factual precision
-            messages=[{"role": "system", "content": self.system}] + self.history
-        )
+        try:
+            response = self.client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                max_tokens=1024,
+                temperature=0.3,       # Low temperature for factual precision
+                messages=[{"role": "system", "content": self.system}] + self.history
+            )
 
-        answer = ""
-        if response.choices and response.choices[0].message:
-            answer = response.choices[0].message.content or ""
+            answer = ""
+            if response.choices and response.choices[0].message:
+                answer = response.choices[0].message.content or ""
+
+            if hasattr(response, "usage") and response.usage:
+                print(f"[tokens used — prompt: {response.usage.prompt_tokens}, completion: {response.usage.completion_tokens}]")
+        except Exception as e:
+            answer = f"Error: {e}"
+
         self.history.append({"role": "assistant", "content": answer})
-
-        if hasattr(response, "usage") and response.usage:
-            print(f"[tokens used — prompt: {response.usage.prompt_tokens}, completion: {response.usage.completion_tokens}]")
         return answer
 
     def reset(self):

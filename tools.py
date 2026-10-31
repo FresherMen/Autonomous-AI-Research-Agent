@@ -8,72 +8,6 @@ from retriever import RAGRetriever     # Step 3 — our RAG pipeline
 #  what tools exist and what arguments they take
 # ─────────────────────────────────────────────
 
-# TOOL_SCHEMAS = [
-#     {
-#         "name": "search_docs",
-#         "description": (
-#             "Search the user's uploaded document collection. "
-#             "Use this when the question is about something the user "
-#             "may have in their research papers, notes, or PDFs."
-#         ),
-#         "input_schema": {
-#             "type": "object",
-#             "properties": {
-#                 "query": {
-#                     "type": "string",
-#                     "description": "A clear search query to find relevant passages"
-#                 },
-#                 "top_k": {
-#                     "type": "integer",
-#                     "description": "How many chunks to retrieve (default 4, max 8)",
-#                     "default": 4
-#                 }
-#             },
-#             "required": ["query"]
-#         }
-#     },
-#     {
-#         "name": "search_web",
-#         "description": (
-#             "Search the web for current information. "
-#             "Use when the question is about recent events, "
-#             "things not in the user's documents, or you need "
-#             "to verify a fact."
-#         ),
-#         "input_schema": {
-#             "type": "object",
-#             "properties": {
-#                 "query": {
-#                     "type": "string",
-#                     "description": "A concise web search query"
-#                 }
-#             },
-#             "required": ["query"]
-#         }
-#     },
-#     {
-#         "name": "save_note",
-#         "description": (
-#             "Save a note or summary to a markdown file. "
-#             "Use when the user asks to save, record, or "
-#             "create a document from the research."
-#         ),
-#         "input_schema": {
-#             "type": "object",
-#             "properties": {
-#                 "title": {
-#                     "type": "string",
-#                     "description": "Filename-safe title for the note"
-#                 },
-#                 "content": {
-#                     "type": "string",
-#                     "description": "The full markdown content to save"
-#                 }
-#             },
-#             "required": ["title", "content"]
-#         }
-#     }
-# ]
 TOOL_SCHEMAS_OPENAI = [
     {
         "type": "function",           # ← Groq needs this wrapper
@@ -172,9 +106,14 @@ class ToolExecutor:
 
         chunks = self.rag.indexer.search(query_str, top_k=k)
 
-        # Track sources for frontend/reporting
+        # Track sources for frontend/reporting, including similarity and text snippet
         self.last_sources = [
-            {"source": c.get("source", "unknown"), "chunk_index": c.get("chunk_index", 0)}
+            {
+                "source":      c.get("source", "unknown"),
+                "chunk_index": c.get("chunk_index", 0),
+                "text":        c.get("text", ""),
+                "similarity":  c.get("similarity", 0.0)
+            }
             for c in chunks
         ]
 
@@ -210,9 +149,12 @@ class ToolExecutor:
         timestamp   = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         filename    = f"./notes/{safe_title}_{timestamp}.md"
 
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(f"# {title_str}\n\n")
-            f.write(f"*Saved: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}*\n\n")
-            f.write(str(content or ""))
-
-        return f"Note saved successfully to: {filename}"
+        try:
+            os.makedirs("./notes", exist_ok=True)
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(f"# {title_str}\n\n")
+                f.write(f"*Saved: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}*\n\n")
+                f.write(str(content or ""))
+            return f"Note saved successfully to: {filename}"
+        except Exception as e:
+            return f"Error saving note to {filename}: {e}"
